@@ -1,0 +1,104 @@
+﻿let Offset=7h;
+let DataTimespan= datetime(2019-01-01 00:00:00.0000000);
+let MonthName=(MonthNo:int)
+{
+    iif(MonthNo==1,"Jan",iif(MonthNo==2,"Feb",iif(MonthNo==3,"Mar",iif(MonthNo==4,"Apr",iif(MonthNo==5,"May",iif(MonthNo==6,"Jun",iif(MonthNo==7,"Jul",iif(MonthNo==8,"Aug",iif(MonthNo==9,"Sep", iif(MonthNo==10,"Oct",iif(MonthNo==11,"Nov","Dec")))))))))))
+};
+let TempSDDistinctTriageIncidents = ()
+{
+    Incidents
+    | where OwningTenantName == "App Center"
+    | where CreateDate >= DataTimespan
+    | distinct IncidentId
+};
+let TempSDTriageIncidents = ()
+{
+    TempSDDistinctTriageIncidents
+    | join kind = inner
+    (
+        Incidents
+        | summarize arg_max(Lens_IngestionTime, *) by IncidentId
+        | where Severity <= 2 and Status != "ACTIVE" and IncidentId !in (129299103,118208154)
+    )
+    on IncidentId
+    | project IncidentId , Title , OwningTenantName , OwningTeamId , OwningContactAlias , Status , Severity , TsgId , ParentIncidentId, CreateDate,CreateDate_PST=CreateDate - Offset , MitigateDate , ResolveDate , ModifiedDate , LastCorrelationDate , IncidentType, Keywords, HowFixed, ResolvedBy, IsCustomerImpacting, IcM_Owner = OwningContactAlias, PIRReportId, PublicPirId
+    | join kind = inner
+    (
+        Teams
+    )
+    on $left.OwningTeamId == $right .TeamId
+    | summarize arg_max(Lens_IngestionTime ,*) by IncidentId
+    | project IncidentId, IncidentType, Severity, Status, Keywords, Title, OwningTenantName, ParentIncidentId, TeamName, OwningContactAlias, TsgId, CreateDate,CreateDate_PST, LastCorrelationDate, ModifiedDate, MitigateDate , ResolveDate, HowFixed, ResolvedBy,IsCustomerImpacting,IcM_Owner,PIRReportId, PublicPirId
+};
+let TempSDTriageIncidentsFinal = ()
+{
+    TempSDTriageIncidents
+    | join kind = leftouter
+    (
+        IncidentCustomFieldEntries
+        | where DisplayName =="1st External Communication Time"
+        | summarize arg_max(Lens_IngestionTime ,*) by IncidentCustomFieldId
+    )
+    on IncidentId
+    | join kind = leftouter
+    (
+        IncidentCustomFieldEntries
+        | where DisplayName =="Impact Detected Time"
+        | summarize arg_max(Lens_IngestionTime ,*) by IncidentCustomFieldId
+    )
+    on IncidentId
+    | join kind = leftouter
+    (
+        IncidentCustomFieldEntries
+        | where DisplayName =="Partner Team Engaged Time"
+        | summarize arg_max(Lens_IngestionTime ,*) by IncidentCustomFieldId
+    )
+    on IncidentId
+    | join kind = leftouter
+    (
+        IncidentCustomFieldEntries
+        | where DisplayName =="MC SME Engaged Time"
+        | summarize arg_max(Lens_IngestionTime ,*) by IncidentCustomFieldId
+    )
+    on IncidentId
+    | project IncidentId, IncidentType, Severity, Status, Keywords, Title, OwningTenantName, ParentIncidentId,TeamName, OwningContactAlias, TsgId, CreateDate_UTC=CreateDate,CreateDate_PST, LastCorrelationDate_UTC=LastCorrelationDate,LastCorrelationDate_PST=LastCorrelationDate-Offset , ModifiedDate_UTC=ModifiedDate,ModifiedDate_PST=ModifiedDate-Offset , MitigateDate_UTC=MitigateDate,MitigateDate_PST=MitigateDate-Offset , ResolveDate_UTC=ResolveDate,ResolveDate_PST=ResolveDate-Offset , HowFixed, ResolvedBy, 1stExternalCommunicationTime_UTC=Value ,ImpactDetectedTime_UTC=Value1 ,PartnerTeamEngagedTime_UTC=Value2 ,MCSMEEngagedTime_UTC=Value3,IsCustomerImpacting,IcM_Owner,PIRReportId, PublicPirId
+};
+let TempSDTriagePIRIncidents = ()
+{
+    TempSDTriageIncidentsFinal
+    | join kind = leftouter
+    (
+        PostIncidentReports
+        | summarize arg_max(Lens_IngestionTime, * ) by PIRReportId
+        | project PIR_Id=PIRReportId, PIR_CreationDate_UTC=CreationDate, PIR_CreationDate_PST=CreationDate-Offset, PIR_Status=Status, PIR_Title=Title, Customer_Impacting_LSI=CreationIncidentId, PIR_ModifiedDate_UTC=ModifiedDate, PIR_ModifiedDate_PST=ModifiedDate-Offset, ReportOwnerContactAlias, FeatureTeamName,FeatureTeam
+    )
+    on $left.PIRReportId == $right.PIR_Id
+    | join kind = leftouter
+    (
+        PostIncidentReports
+        | where Status == "ReadyForReview"
+        | summarize arg_min(Lens_IngestionTime , *) by PIRReportId
+        | project ReadyForReviewDate= ModifiedDate , PIRReportId ) on $left.PIR_Id == $right.PIRReportId
+}    ;
+    let SDTriagePIRIncidents = ()
+{
+        TempSDTriagePIRIncidents
+        | join kind = leftouter
+        (
+            Teams
+            | summarize arg_max(Lens_IngestionTime , * ) by TeamId
+            | project PIR_OwningTeam = TeamName, TeamId) on $left.FeatureTeam == $right.TeamId
+}        ;
+        let TriageIncsFinal = materialize(SDTriagePIRIncidents);
+        let TriageMonthly=()
+{
+            TriageIncsFinal
+            | extend Aggregation="Monthly"
+            | extend Period=strcat(MonthName(datepart("Month",CreateDate_PST)),"-",tostring(datepart("Year",CreateDate_PST)))
+            | extend StartDate=startofmonth(CreateDate_PST)
+            | extend EndDate=endofmonth(CreateDate_PST)
+}        ;
+     TriageMonthly
+    | where Aggregation == "Monthly" and isempty(ParentIncidentId ) and OwningTenantName == "App Center" and Severity <3 and CreateDate_PST >= todatetime("2018-10-01 00:00:00") and PIR_Status !="Completed" and PIR_Status !="Abandoned"
+    | project IncidentId , Severity, Status  , Title , CreateDate_PST , TeamName , OwningContactAlias , PIR_Id , PIR_Status 
+	| sort by CreateDate_PST desc nulls last 

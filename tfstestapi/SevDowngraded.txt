@@ -1,0 +1,37 @@
+﻿let Offset=7h;
+let DataTimespan= datetime(2019-07-01 00:00:00.0000000);
+let icmincidents = Incidents
+    | where OwningTenantName == "App Center"
+    | summarize arg_max(Lens_IngestionTime,*) by IncidentId
+    | where isnull(ParentIncidentId) and ModifiedDate >= (DataTimespan) and Severity in (0,1,2,3)
+    | distinct IncidentId;
+let incidentHistory = ()
+{
+IncidentHistory
+| where IncidentId in (icmincidents)
+| where ChangeCategories has "SeverityDowngrade" //or ChangeCategories has "SeverityUpgrade"
+| where isnotempty(Severity)
+| project  IncidentId, Severity, ChangeCategories, ChangeDate, HistoryId,ChangedBy
+   | join kind=inner
+    (
+        IncidentDescriptions
+    )
+    on HistoryId
+| join kind=inner 
+(
+Contacts
+| project Alias,FullName
+) on $right.Alias == $left.ChangedBy
+//remove the summarize for complete list of incidents with duplicates
+|join kind=inner 
+(
+Incidents
+| where isnull( ParentIncidentId)
+    | summarize arg_max(Lens_IngestionTime,*) by IncidentId
+    | distinct IncidentId, OwningTeamName, OwningTenantName, Title, HowFixed, Status,ModifiedDate,ParentIncidentId
+) on IncidentId
+};
+incidentHistory
+    | summarize arg_max(ChangedDate_PST=ChangeDate-Offset,ChangeDate, Severity,Text,ChangedBy,FullName, OwningTeamName, Title, HowFixed, Status) by IncidentId  
+| sort by ChangeDate;
+   
