@@ -1,35 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using Microsoft.TeamFoundation.WorkItemTracking.WebApi;
-using Microsoft.TeamFoundation.WorkItemTracking.WebApi.Models;
-using Microsoft.VisualStudio.Services.Common;
-using Microsoft.VisualStudio.Services.WebApi.Patch.Json;
-using Microsoft.VisualStudio.Services.WebApi.Patch;
-using Microsoft.VisualStudio.Services.WebApi;
-using System.Net.Http.Headers;
-using System.Net.Http;
-using Newtonsoft.Json;
-using Microsoft.VisualStudio.Services.Client;
-using Microsoft.TeamFoundation.WorkItemTracking.Client;
 using System.Net.Mail;
 using System.Configuration;
-using Kusto.Data;
-using Kusto.QueryLanguage;
-using Microsoft.TeamFoundation.Framework.Client;
-using Microsoft.TeamFoundation.Framework.Common;
-using System.Management.Automation;
 using System.Security.Principal;
 using System.Threading;
-using System.IO;
 using System.Globalization;
-using System.Net;
 using Microsoft.Office.Interop.Outlook;
 
 namespace tfstestapi
@@ -100,19 +77,18 @@ namespace tfstestapi
         static string strTFSEmail = string.Empty;
         public void sendMail(string strFileName, string strMailbody, string strToaddress)
         {
-            MailMessage m = new MailMessage();
-            SmtpClient sc = new SmtpClient();
             try
             {
                 Microsoft.Office.Interop.Outlook.Application app = new
                            Microsoft.Office.Interop.Outlook.Application();
                 MailItem item = app.CreateItem((OlItemType.olMailItem));
                 item.BodyFormat = OlBodyFormat.olFormatHTML;
-                item.To = ConfigurationManager.AppSettings["MailTo"].ToString();
-                item.BCC = "cc@test.com";
-                item.Subject = "Livesite Retrospective";
-                // item.Body = strMailbody;
+
+                item.Subject = "Livesite Retrospective" + DateTime.Now;
+                item.To = strToaddress;
+                item.CC = ConfigurationManager.AppSettings["MailCC"].ToString();
                 item.HTMLBody = strMailbody;
+
                 item.Display();
             }
             catch (System.Exception ex)
@@ -334,7 +310,7 @@ namespace tfstestapi
             strMailHeadrer += "<tr><td bgcolor='#FFE599' >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><td>Incidents older than a week but newer than two weeks</td><td>" + lastlastmonday.Month + "/" + lastlastmonday.Day + " to " + lastsunday.Month + "/" + lastsunday.Day + " </td></tr>";
             strMailHeadrer += "<tr ><td bgcolor='F7CAAC' > &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><td>Incidents older than two weeks</td><td>" + lastLastsunday.Month + "/" + lastLastsunday.Day + " or before" + " </td></tr>";
             strMailHeadrer += "</table>";
-            strMailHeadrer += "<br>";           
+            strMailHeadrer += "<br>";
             strMailHeadrer += "<br>";
             writeHtmlOutput(strMailHeadrer);
             //below code to send email

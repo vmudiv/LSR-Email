@@ -18,7 +18,7 @@ let TempSDTriageIncidents = ()
     (
         Incidents
         | summarize arg_max(Lens_IngestionTime, *) by IncidentId
-        | where Severity <= 2 and Status != "ACTIVE" and IncidentId !in (129299103,118208154)
+        | where Severity <= 2 and Status != "ACTIVE" and IncidentId !in (129299103,118208154)  //Avoiding these two incidents wantedly
     )
     on IncidentId
     | project IncidentId , Title , OwningTenantName , OwningTeamId , OwningContactAlias , Status , Severity , TsgId , ParentIncidentId, CreateDate,CreateDate_PST=CreateDate - Offset , MitigateDate , ResolveDate , ModifiedDate , LastCorrelationDate , IncidentType, Keywords, HowFixed, ResolvedBy, IsCustomerImpacting, IcM_Owner = OwningContactAlias, PIRReportId, PublicPirId
